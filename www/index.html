@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust + WASM Cloth Simulation</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a2e; color: #e0e0e0; font-family: sans-serif; display: flex; }
+        canvas { display: block; background-color: #0f0f1a; }
+        #controls { padding: 15px; background-color: #161625; width: 250px; box-sizing: border-box; overflow-y: auto; font-size: 0.9em; }
+        #controls h3 { margin-top: 0; margin-bottom: 10px; color: #a0a0ff; }
+        #controls div { margin-bottom: 10px; }
+        #controls label {
+            display: block;
+            margin-bottom: 3px;
+            color: #ccc;
+        }
+        #controls input[type="range"], #controls input[type="number"], #controls select {
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 5px;
+        }
+        #controls input[type="checkbox"] { margin-right: 5px; }
+        #controls button { padding: 8px 15px; background-color: #4a4af0; color: white; border: none; border-radius: 3px; cursor: pointer; width: 100%; margin-top: 10px; }
+        #controls button:hover { background-color: #6a6aff; }
+        .control-group { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+        .value-display { margin-left: 5px; font-style: italic; color: #aaa; }
+        .info { font-size: 0.8em; color: #aaa; margin-top: 15px; border-top: 1px solid #333; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <h3>Generation</h3>
+        <div class="control-group">
+            <div>
+                <label for="cloth-type">Cloth Type:</label>
+                <select id="cloth-type">
+                    <option value="grid">Grid</option>
+                    <option value="spiderweb">Spiderweb (Placeholder)</option>
+                </select>
+            </div>
+            <div>
+                <label for="integrity">Integrity/Resolution (Grid Size):</label>
+                <input type="range" id="integrity" min="5" max="50" value="20">
+                <span class="value-display" id="integrity-value">20</span>
+            </div>
+            <div>
+                 <label for="pinning">Pinning:</label>
+                 <select id="pinning">
+                     <option value="top">Top Edge</option>
+                     <option value="corners">Corners</option>
+                     <option value="none">None</option>
+                 </select>
+            </div>
+             <button id="generate-button">Generate</button>
+        </div>
+
+        <h3>Physics</h3>
+         <div class="control-group">
+             <div>
+                <label for="drag">Drag:</label>
+                <input type="range" id="drag" min="0" max="0.1" step="0.001" value="0.01">
+                <span class="value-display" id="drag-value">0.01</span>
+            </div>
+            <div>
+                <label for="stiffness">Stiffness:</label>
+                <input type="range" id="stiffness" min="0.1" max="1.0" step="0.01" value="0.5">
+                <span class="value-display" id="stiffness-value">0.5</span>
+            </div>
+            <div>
+                <label for="tear-resist">Tear Resist Multiplier:</label>
+                <input type="range" id="tear-resist" min="1.1" max="50.0" step="0.1" value="5.0">
+                <span class="value-display" id="tear-resist-value">5.0</span>
+            </div>
+            <div>
+                <label for="gravity">Gravity Y:</label>
+                <input type="range" id="gravity" min="0" max="2000" step="10" value="981">
+                <span class="value-display" id="gravity-value">981</span>
+            </div>
+            <div>
+                <label for="substeps">Substeps:</label>
+                <input type="range" id="substeps" min="1" max="20" step="1" value="5">
+                <span class="value-display" id="substeps-value">5</span>
+            </div>
+        </div>
+
+         <h3>Interaction</h3>
+        <div class="control-group">
+            <div>
+                 <label for="mouse-action">Mouse Action:</label>
+                 <select id="mouse-action">
+                     <option value="cut">Cut</option>
+                     <option value="pin">Pin/Unpin</option>
+                     <option value="pull">Pull</option>
+                     <option value="none">None</option>
+                 </select>
+            </div>
+            <div>
+                <label for="mouse-radius">Mouse Radius:</label>
+                <input type="range" id="mouse-radius" min="10" max="200" value="50">
+                <span class="value-display" id="mouse-radius-value">50</span>
+            </div>
+        </div>
+
+        <h3>Rendering</h3>
+        <div>
+             <label><input type="checkbox" id="draw-points" checked> Draw Points</label>
+        </div>
+
+        <div class="info">
+            Left Click / One Finger: Action<br>
+            Right Click / Two Fingers: Pan (TODO)<br>
+            Mouse Wheel / Pinch: Zoom (TODO)
+        </div>
+    </div>
+
+    <canvas id="simulation-canvas"></canvas>
+
+    <!-- Load the JS Module -->
+    <script type="module" src="index.js"></script>
+</body>
+</html>
