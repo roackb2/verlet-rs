@@ -35,7 +35,8 @@ async function run() {
 
     // --- Interaction State ---
     let mouse = { x: 0, y: 0, isDown: false, button: 0 };
-    let interactionTargetPointIndex = null; // Store index of point being pulled
+    let interactionTargetPointIndex = null; // Revert to single index
+    let prevMouse = { x: 0, y: 0 }; // Track previous mouse position for velocity
 
     // --- UI Controls Setup ---
     const controls = {
@@ -151,11 +152,73 @@ async function run() {
                 points.push(row);
             }
         } else if (type === 'spiderweb') {
-            // TODO: Implement spiderweb generation
-            console.warn('Spiderweb generation not implemented yet.');
-            // Add a simple default grid for now if spiderweb is selected
-             generateCloth(); // Fallback to grid
-             controls.clothType.value = 'grid';
+            const numRadials = 10; // Number of spokes
+            const numSegments = size; // Use 'integrity' slider for segments per spoke
+            const center = { x: width / 2, y: height / 4 }; // Start near top-center
+            const maxRadius = Math.min(width, height) * 0.4; // Max radius of the web
+            const segmentLength = maxRadius / numSegments;
+            const angleIncrement = (2 * Math.PI) / numRadials;
+
+            let radialPoints = Array(numRadials).fill(null).map(() => []); // Stores point indices for each radial
+
+            // --- Create Points ---
+            // Center point (usually pinned)
+            let centerPointIndex = simulation.add_point(center.x, center.y, pinning === 'center'); // Pin center if selected
+            radialPoints.forEach(radial => radial.push(centerPointIndex)); // All radials start at the center
+
+            // Radial points
+            for (let seg = 1; seg <= numSegments; seg++) {
+                const radius = seg * segmentLength;
+                for (let rad = 0; rad < numRadials; rad++) {
+                    const angle = rad * angleIncrement;
+                    const px = center.x + Math.cos(angle) * radius;
+                    const py = center.y + Math.sin(angle) * radius;
+
+                    // Pinning: 'top' pins the outermost point of the top-most radials
+                    // Pinning: 'edges' pins all outermost points
+                    let pinned = false;
+                    if (seg === numSegments) { // Outermost points
+                        if (pinning === 'edges') {
+                            pinned = true;
+                        } else if (pinning === 'corners') { // Map grid 'Corners' to spiderweb 'Edges'
+                            pinned = true;
+                        } else if (pinning === 'top') {
+                            // Pin points near the top (e.g., within the top 90 degrees)
+                            // Angle for top vertical is -PI/2 or 3*PI/2
+                            const topAngle = -Math.PI / 2;
+                            let angleDiff = Math.atan2(Math.sin(angle - topAngle), Math.cos(angle - topAngle)); // Angle difference in [-PI, PI]
+                            if (Math.abs(angleDiff) <= Math.PI / 4) { // Pin if within +/- 45 degrees of top
+                                pinned = true;
+                            }
+                        }
+                    }
+                    if (pinning === 'center' && seg === 0) {
+                         // Center point pinning is handled when creating the center point
+                    }
+
+                    let pointIndex = simulation.add_point(px, py, pinned);
+                    radialPoints[rad].push(pointIndex);
+                }
+            }
+
+            // --- Create Sticks ---
+            for (let rad = 0; rad < numRadials; rad++) {
+                for (let seg = 0; seg < numSegments; seg++) {
+                    // Radial sticks (connecting points along a spoke)
+                    simulation.add_stick(radialPoints[rad][seg], radialPoints[rad][seg + 1], null, null);
+
+                    // Spiral sticks (connecting points between adjacent spokes)
+                    if (seg > 0) { // Don't connect the center point in a spiral
+                        const nextRad = (rad + 1) % numRadials; // Wrap around for the last radial
+                        simulation.add_stick(radialPoints[rad][seg], radialPoints[nextRad][seg], null, null);
+                    }
+                }
+                 // Connect the outermost points with spirals as well
+                 if (numSegments > 0) {
+                    const nextRad = (rad + 1) % numRadials;
+                    simulation.add_stick(radialPoints[rad][numSegments], radialPoints[nextRad][numSegments], null, null);
+                 }
+            }
         }
         // Access as property, not function
         console.log(`Generated ${type} cloth: ${simulation.points_count} points, ${simulation.sticks_count} sticks`);
@@ -201,11 +264,17 @@ async function run() {
                 simulation.interact_pin_toggle(mouse.x, mouse.y, radius);
             } else if (action === 'pull') {
                 // Call Rust function (to be implemented) - get index of point to pull
-                interactionTargetPointIndex = simulation.interact_pull_start(mouse.x, mouse.y, radius);
-                // If no point is found, interact_pull_start should return a specific value (e.g., usize::MAX -> check in JS)
-                 if (interactionTargetPointIndex === Number.MAX_SAFE_INTEGER) { // Assuming usize::MAX maps near this
-                    interactionTargetPointIndex = null;
-                 }
+                 interactionTargetPointIndex = simulation.interact_pull_start(mouse.x, mouse.y, radius);
+                // // Rust function now returns an array of indices
+                // interactionTargetPointIndices = simulation.interact_pull_start(mouse.x, mouse.y, radius);
+                // // No need to check for MAX_SAFE_INTEGER anymore
+                 // If no point is found, interact_pull_start should return a specific value (e.g., usize::MAX -> check in JS)
+                  if (interactionTargetPointIndex === Number.MAX_SAFE_INTEGER) { // Assuming usize::MAX maps near this
+                     interactionTargetPointIndex = null;
+                  }
+                // if (interactionTargetPointIndices.length > 0) {
+                //     console.log(`Started pulling ${interactionTargetPointIndices.length} points.`);
+                // }
             }
         } else if (mouse.button === 2) { // Right click / two fingers (TODO: Implement Pan)
             console.log("Pan started (TODO)");
@@ -214,14 +283,21 @@ async function run() {
 
     function handleInteractionMove(evt) {
         evt.preventDefault();
+        // Store previous mouse position BEFORE updating current
+        prevMouse.x = mouse.x;
+        prevMouse.y = mouse.y;
+
         const pos = getMousePos(canvas, evt);
         mouse.x = pos.x;
         mouse.y = pos.y;
 
         if (mouse.isDown && mouse.button === 0) { // Left drag / single touch move
              const action = controls.mouseAction.value;
-             if (action === 'pull' && interactionTargetPointIndex !== null) {
-                 // Call Rust function (to be implemented)
+             // if (action === 'pull' && interactionTargetPointIndices.length > 0) {
+             //     // Pass the array of indices to the Rust function
+             //     simulation.interact_pull_move(interactionTargetPointIndices, mouse.x, mouse.y);
+             // }
+             if (action === 'pull' && interactionTargetPointIndex !== null) { // Check single index
                  simulation.interact_pull_move(interactionTargetPointIndex, mouse.x, mouse.y);
              } else if (action === 'cut') {
                  // Continuous cutting while dragging
@@ -237,9 +313,12 @@ async function run() {
          evt.preventDefault();
          if (mouse.isDown) {
              if (mouse.button === 0) { // Left release / single touch end
-                 if (interactionTargetPointIndex !== null) {
-                     // Call Rust function (optional - if needed for pull end)
-                     // simulation.interact_pull_end(interactionTargetPointIndex);
+                 if (interactionTargetPointIndex !== null) { // Check single index
+                     // Calculate final mouse velocity
+                    const velocityX = mouse.x - prevMouse.x;
+                    const velocityY = mouse.y - prevMouse.y;
+                     // Call Rust function to apply release velocity
+                    simulation.interact_pull_end(interactionTargetPointIndex, velocityX, velocityY);
                      interactionTargetPointIndex = null;
                  }
              } else if (mouse.button === 2) {
@@ -328,6 +407,22 @@ async function run() {
         }
 
         // Visualize pulling line
+        // // Optional: Visualize lines to all pulled points?
+        // if (interactionTargetPointIndices.length > 0) {
+        //     ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)'; // Semi-transparent green lines
+        //     ctx.lineWidth = 1;
+        //     ctx.beginPath();
+        //     for (const index of interactionTargetPointIndices) {
+        //         const pointX = pointPositions[index * 2];
+        //         const pointY = pointPositions[index * 2 + 1];
+        //         if (pointX !== undefined && pointY !== undefined) {
+        //             ctx.moveTo(pointX, pointY);
+        //             ctx.lineTo(mouse.x, mouse.y);
+        //         }
+        //     }
+        //     ctx.stroke();
+        // }
+        // Revert to visualizing line to single point
         if (interactionTargetPointIndex !== null) {
              const pointX = pointPositions[interactionTargetPointIndex * 2];
              const pointY = pointPositions[interactionTargetPointIndex * 2 + 1];

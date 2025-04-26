@@ -7,7 +7,7 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #1a1a2e; color: #e0e0e0; font-family: sans-serif; display: flex; }
         canvas { display: block; background-color: #0f0f1a; }
-        #controls { padding: 15px; background-color: #161625; width: 250px; box-sizing: border-box; overflow-y: auto; font-size: 0.9em; }
+        #controls { padding: 15px; background-color: #161625; width: 250px; box-sizing: border-box; overflow-y: auto; font-size: 0.9em; max-height: 100vh; }
         #controls h3 { margin-top: 0; margin-bottom: 10px; color: #a0a0ff; }
         #controls div { margin-bottom: 10px; }
         #controls label {
@@ -36,7 +36,7 @@
                 <label for="cloth-type">Cloth Type:</label>
                 <select id="cloth-type">
                     <option value="grid">Grid</option>
-                    <option value="spiderweb">Spiderweb (Placeholder)</option>
+                    <option value="spiderweb" selected>Spiderweb</option>
                 </select>
             </div>
             <div>
@@ -47,8 +47,10 @@
             <div>
                  <label for="pinning">Pinning:</label>
                  <select id="pinning">
-                     <option value="top">Top Edge</option>
-                     <option value="corners">Corners</option>
+                     <option value="top">Top Edge / Spokes</option>
+                     <option value="corners">Corners / Edges</option>
+                     <option value="center">Center</option>
+                     <option value="edges">Edges</option>
                      <option value="none">None</option>
                  </select>
             </div>
@@ -91,7 +93,7 @@
                  <select id="mouse-action">
                      <option value="cut">Cut</option>
                      <option value="pin">Pin/Unpin</option>
-                     <option value="pull">Pull</option>
+                     <option value="pull" selected>Pull</option>
                      <option value="none">None</option>
                  </select>
             </div>

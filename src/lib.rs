@@ -142,30 +142,64 @@ impl Simulation {
         }
         let p1 = self.points[p1_idx];
         let p2 = self.points[p2_idx];
-        let length = p1.position.distance(p2.position);
-        let stiffness = stiffness_override.unwrap_or(self.elasticity);
-        let tear_resistance = tear_resist_override.unwrap_or(self.tear_resistance_threshold);
-        self.sticks.push(Stick::new(p1_idx, p2_idx, length, stiffness, tear_resistance));
+
+        // --- Subdivision Logic ---
+        let num_segments = 3; // Create 3 smaller sticks (2 intermediate points)
+        if num_segments <= 1 {
+            // Original behavior: Add just one stick
+            let length = p1.position.distance(p2.position);
+            let stiffness = stiffness_override.unwrap_or(self.elasticity);
+            let tear_resistance = tear_resist_override.unwrap_or(self.tear_resistance_threshold);
+            self.sticks.push(Stick::new(p1_idx, p2_idx, length, stiffness, tear_resistance));
+        } else {
+            let delta = p2.position - p1.position;
+            let segment_vector = delta / num_segments as f32;
+            let segment_length = segment_vector.length();
+            let stiffness = stiffness_override.unwrap_or(self.elasticity);
+            let tear_resistance = tear_resist_override.unwrap_or(self.tear_resistance_threshold);
+
+            let mut last_point_idx = p1_idx;
+
+            // Add intermediate points and sticks
+            for i in 1..num_segments { // Loop from 1 up to (but not including) num_segments
+                 let inter_pos = p1.position + segment_vector * i as f32;
+                 // Create a new intermediate point (not pinned)
+                 let new_point = Point::new(inter_pos.x, inter_pos.y);
+                 self.points.push(new_point);
+                 let current_point_idx = self.points.len() - 1;
+
+                 // Add stick connecting the last point to the new intermediate point
+                 self.sticks.push(Stick::new(last_point_idx, current_point_idx, segment_length, stiffness, tear_resistance));
+
+                 last_point_idx = current_point_idx; // Update last point index
+            }
+
+             // Add the final stick connecting the last intermediate point to p2
+             self.sticks.push(Stick::new(last_point_idx, p2_idx, segment_length, stiffness, tear_resistance));
+        }
+        // --- End Subdivision Logic ---
+
+        // // Original code:
+        // let length = p1.position.distance(p2.position);
+        // let stiffness = stiffness_override.unwrap_or(self.elasticity);
+        // let tear_resistance = tear_resist_override.unwrap_or(self.tear_resistance_threshold);
+        // self.sticks.push(Stick::new(p1_idx, p2_idx, length, stiffness, tear_resistance));
     }
 
     // --- NEW: Bulk Data Access for JS Rendering ---
     #[wasm_bindgen]
-    pub fn get_point_positions(&self) -> js_sys::Float32Array {
+    pub fn get_point_positions(&self) -> Vec<f32> {
         // Create a flat array [x0, y0, x1, y1, ...]
         let mut positions = Vec::with_capacity(self.points.len() * 2);
         for point in &self.points {
             positions.push(point.position.x);
             positions.push(point.position.y);
         }
-        // Use unsafe block because from_slice requires it, but it's safe
-        // because we know the Vec<f32> data layout matches Float32Array.
-        unsafe {
-            js_sys::Float32Array::view(&positions)
-        }
+        positions // Return the Vec itself, wasm-bindgen copies it
     }
 
     #[wasm_bindgen]
-    pub fn get_stick_indices(&self) -> js_sys::Uint32Array {
+    pub fn get_stick_indices(&self) -> Vec<u32> {
          // Create a flat array [pA0, pB0, pA1, pB1, ...]
         let mut indices = Vec::with_capacity(self.sticks.len() * 2);
         for stick in &self.sticks {
@@ -173,9 +207,7 @@ impl Simulation {
             indices.push(stick.point_a_idx as u32);
             indices.push(stick.point_b_idx as u32);
         }
-        unsafe {
-            js_sys::Uint32Array::view(&indices)
-        }
+        indices // Return the Vec itself, wasm-bindgen copies it
     }
 
     // --- NEW: Interaction Methods ---
@@ -231,6 +263,7 @@ impl Simulation {
     }
 
     #[wasm_bindgen]
+    // Return a list of indices within the radius
     pub fn interact_pull_start(&mut self, x: f32, y: f32, radius: f32) -> usize {
         let mouse_pos = Vec2::new(x, y);
         let radius_sq = radius * radius;
@@ -241,6 +274,7 @@ impl Simulation {
         for (i, point) in self.points.iter().enumerate() {
              if point.is_pinned { continue; }
             let dist_sq = point.position.distance_squared(mouse_pos);
+            // Find closest point
             if dist_sq < min_dist_sq {
                 min_dist_sq = dist_sq;
                 closest_point_idx = Some(i);
@@ -251,23 +285,46 @@ impl Simulation {
     }
 
     #[wasm_bindgen]
+    // Accept a list of indices
     pub fn interact_pull_move(&mut self, point_index: usize, target_x: f32, target_y: f32) {
-        if point_index < self.points.len() {
+         if point_index < self.points.len() {
             // Ensure the point isn't pinned unexpectedly
              if self.points[point_index].is_pinned { return; }
+
+            // // Calculate velocity BEFORE moving the point
+            // let current_velocity = self.points[point_index].position - self.points[point_index].old_position;
 
             // Forcefully move the point to the target position
             let target_pos = Vec2::new(target_x, target_y);
             self.points[point_index].position = target_pos;
-            // Also update old_position to prevent unnatural velocity jump on release?
-            // Option 1: Set old_position to current -> stops motion instantly on release
+
+            // // Set old_position to maintain the relative velocity
+            // self.points[point_index].old_position = target_pos - current_velocity;
+
+            // --- Set old_position = position to stick perfectly ---
              self.points[point_index].old_position = target_pos;
-            // Option 2: Calculate implied velocity and set old_position accordingly (more complex)
-            // Let's stick with Option 1 for now.
         }
     }
 
-    // interact_pull_end is likely not needed if we just set position directly.
+    // NEW: Apply release velocity
+    #[wasm_bindgen]
+    pub fn interact_pull_end(&mut self, point_index: usize, velocity_x: f32, velocity_y: f32) {
+        if point_index < self.points.len() {
+             if self.points[point_index].is_pinned { return; }
+
+            // Limit velocity to prevent explosions?
+            let max_vel = 100.0; // Adjust as needed
+            let vel_sq = velocity_x * velocity_x + velocity_y * velocity_y;
+            let final_vel = if vel_sq > max_vel * max_vel {
+                Vec2::new(velocity_x, velocity_y).normalize() * max_vel
+            } else {
+                Vec2::new(velocity_x, velocity_y)
+            };
+
+            // Set old_position based on final position and desired velocity
+            self.points[point_index].old_position = self.points[point_index].position - final_vel;
+        }
+    }
 
     // --- NEW: Method to update bounds ---
     #[wasm_bindgen]
