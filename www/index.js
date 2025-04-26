@@ -16,18 +16,20 @@ async function run() {
         height = window.innerHeight;
         canvas.width = width;
         canvas.height = height;
-        // TODO: Re-initialize simulation if needed, or adjust parameters
         console.log(`Resized to ${width}x${height}`);
         if (simulation) {
-            // Potentially update simulation bounds or regenerate if structure depends on size
-            // simulation.set_bounds(width, height); // Assuming such a method exists
+            // We need a way to update simulation bounds or regenerate
+            simulation.update_bounds(width, height); // Need to add this method to Rust
+            // Alternatively, force regeneration on resize:
+            // generateCloth();
         }
     }
     window.addEventListener('resize', resizeCanvas);
-    resizeCanvas(); // Initial size
+    // resizeCanvas(); // Initial size <-- MOVED
 
     // --- Simulation Setup ---
     let simulation = new Simulation(width, height);
+    resizeCanvas(); // Initial size <-- MOVED HERE
     let substeps = 5;
     let drawPoints = true;
 
@@ -155,7 +157,8 @@ async function run() {
              generateCloth(); // Fallback to grid
              controls.clothType.value = 'grid';
         }
-        console.log(`Generated ${type} cloth: ${simulation.points_count()} points, ${simulation.sticks_count()} sticks`);
+        // Access as property, not function
+        console.log(`Generated ${type} cloth: ${simulation.points_count} points, ${simulation.sticks_count} sticks`);
     }
 
     controls.generateButton.addEventListener('click', generateCloth);
@@ -265,8 +268,9 @@ async function run() {
         ctx.clearRect(0, 0, width, height);
 
         // Get data from WASM using the new efficient methods
-        const pointsCount = simulation.points_count();
-        const sticksCount = simulation.sticks_count();
+        // Access as properties
+        const pointsCount = simulation.points_count;
+        const sticksCount = simulation.sticks_count;
 
         if (pointsCount === 0) return; // Nothing to draw
 

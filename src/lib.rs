@@ -269,6 +269,16 @@ impl Simulation {
 
     // interact_pull_end is likely not needed if we just set position directly.
 
+    // --- NEW: Method to update bounds ---
+    #[wasm_bindgen]
+    pub fn update_bounds(&mut self, width: f32, height: f32) {
+        self.width = width;
+        self.height = height;
+        // Optional: Immediately constrain points to new bounds?
+        // self.constrain_points();
+        // Or let the next simulation step handle it.
+    }
+
     // --- Placeholder for simulation step ---
     #[wasm_bindgen]
     pub fn update(&mut self, dt: f32, substeps: u32) {
